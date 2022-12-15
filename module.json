@@ -1,0 +1,16 @@
+{
+  "name": "coinbase",
+  "description": "coinbase",
+  "identifier": "coinbase",
+  "title": "coinbase",
+  "version": "1.0.0",
+  "type": "payment",
+  "argument": [],
+  "authors": [
+    {
+      "name": "",
+      "email": ""
+    }
+  ],
+  "minimumCoreVersion": "35"
+}
