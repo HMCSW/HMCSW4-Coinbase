@@ -3,6 +3,7 @@
 namespace hmcswModule\coinbase\src;
 
 use Exception;
+use hmcsw\payment\PaymentRetourReason;
 use hmcsw\utils\unitUtil;
 use hmcsw\payment\payment;
 use hmcsw\objects\user\User;
@@ -192,7 +193,7 @@ class coinbase implements modulePaymentRepository
     return $this->config;
   }
 
-  public function retourPayment ($external_id, $reason, $amount): array
+  public function retourPayment ($external_id, PaymentRetourReason $reason, $amount): array
   {
     return ["success" => false, "response" => ["error_code" => 400, "error_message" => "not available for coinbase"]];
   }
