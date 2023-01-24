@@ -5,20 +5,20 @@ namespace hmcswModule\coinbase\src;
 use Exception;
 use hmcsw\payment\PaymentRetourReason;
 use hmcsw\utils\unitUtil;
-use hmcsw\payment\payment;
+use hmcsw\payment\Payment;
 use hmcsw\objects\user\User;
 use CoinbaseCommerce\Webhook;
 use CoinbaseCommerce\ApiClient;
-use hmcsw\payment\paymentEvents;
+use hmcsw\payment\PaymentEvents;
 use CoinbaseCommerce\Resources\Charge;
 use hmcsw\service\config\ConfigService;
 use hmcsw\service\general\BalanceService;
-use hmcsw\service\authorization\logService;
+use hmcsw\service\authorization\LogService;
 use hmcsw\service\templates\LanguageService;
 use CoinbaseCommerce\Exceptions\ApiException;
-use hmcsw\service\module\modulePaymentRepository;
+use hmcsw\service\module\ModulePaymentRepository;
 
-class coinbase implements modulePaymentRepository
+class coinbase implements ModulePaymentRepository
 {
   public string $webhookUrl;
   private array $config;
@@ -74,12 +74,12 @@ class coinbase implements modulePaymentRepository
       http_response_code(200);
 
       if ($event->type == "charge:confirmed") {
-        payment::checkoutPayment($event->data->id, true);
-        logService::createLog($event->data->id, "coinbase_hook_test");
-        logService::createLog($event, "coinbase_hook_test");
-        return payment::checkoutPayment($event->data->id);
+        Payment::checkoutPayment($event->data->id, true);
+        LogService::createLog($event->data->id, "coinbase_hook_test");
+        LogService::createLog($event, "coinbase_hook_test");
+        return Payment::checkoutPayment($event->data->id);
       } elseif ($event->type == "charge:failed") {
-        return paymentEvents::paymentCancelled($event->id);
+        return PaymentEvents::paymentCancelled($event->id);
       } else {
         return ["success" => true,
           "response" => "Hook success, but nothing to do: " . $event->type,
@@ -160,7 +160,7 @@ class coinbase implements modulePaymentRepository
     if (is_array($this->getCoinbase())) return $this->getCoinbase();
     $coinbase = $this->getCoinbase();
 
-    $order = payment::getOrder($order_id);
+    $order = Payment::getOrder($order_id);
     if (!$order['success']) return $order;
     $order = $order['response']['order'];
 
