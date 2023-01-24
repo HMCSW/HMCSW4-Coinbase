@@ -4,7 +4,7 @@ namespace hmcswModule\coinbase\src;
 
 use Exception;
 use hmcsw\payment\PaymentRetourReason;
-use hmcsw\utils\unitUtil;
+use hmcsw\utils\UnitUtil;
 use hmcsw\payment\Payment;
 use hmcsw\objects\user\User;
 use CoinbaseCommerce\Webhook;
@@ -167,7 +167,7 @@ class coinbase implements ModulePaymentRepository
     $endPrize = $order['amount']['full'];
 
     try {
-      $currency = unitUtil::getCurrency("code");
+      $currency = UnitUtil::getCurrency("code");
       $currency = "EUR";
 
       $chargeData = ['name' => ConfigService::getConfig() ['name'],
