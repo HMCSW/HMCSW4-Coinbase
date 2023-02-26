@@ -58,7 +58,7 @@ class coinbase implements ModulePaymentRepository
     $this->client_secret = $this->config['secret']['client'];
     $this->hook_secret = $this->config['secret']['hook'];
 
-    $this->webhookUrl = ConfigService::getUrl("apiAll") . '/hooks/payment/mollie?key=' . $this->hook_secret;
+    $this->webhookUrl = ConfigService::getApiUrl() . '/hooks/payment/mollie?key=' . $this->hook_secret;
 
   }
 
@@ -69,17 +69,17 @@ class coinbase implements ModulePaymentRepository
     $signatureHeader = $headers[$headerName] ?? null;
     $payload = trim(file_get_contents('php://input'));
 
+    $data = json_decode(file_get_contents('php://input'), true);
+    LogService::createLog($data, "coinbase_hook_test_start");
     try {
       $event = Webhook::buildEvent($payload, $signatureHeader, $this->hook_secret);
       http_response_code(200);
 
       if ($event->type == "charge:confirmed") {
-        Payment::checkoutPayment($event->data->id, true);
-        LogService::createLog($event->data->id, "coinbase_hook_test");
-        LogService::createLog($event, "coinbase_hook_test");
-        return Payment::checkoutPayment($event->data->id);
+        Payment::checkoutPayment($data['event']['data']['id'], true);
+        return Payment::checkoutPayment($data['event']['data']['id']);
       } elseif ($event->type == "charge:failed") {
-        return PaymentEvents::paymentCancelled($event->id);
+        return PaymentEvents::paymentCancelled($data['event']['data']['id']);
       } else {
         return ["success" => true,
           "response" => "Hook success, but nothing to do: " . $event->type,
