@@ -2,21 +2,22 @@
 
 namespace hmcswModule\coinbase\src;
 
-use Exception;
-use hmcsw\payment\PaymentRetourReason;
-use hmcsw\utils\UnitUtil;
-use hmcsw\payment\Payment;
-use hmcsw\objects\user\User;
-use CoinbaseCommerce\Webhook;
 use CoinbaseCommerce\ApiClient;
-use hmcsw\payment\PaymentEvents;
+use CoinbaseCommerce\Exceptions\ApiException;
 use CoinbaseCommerce\Resources\Charge;
+use CoinbaseCommerce\Webhook;
+use Exception;
+use hmcsw\objects\user\User;
+use hmcsw\payment\Payment;
+use hmcsw\payment\PaymentEvents;
+use hmcsw\payment\PaymentRetourReason;
+use hmcsw\payment\subscription\PaymentSubscriptionEntity;
+use hmcsw\service\authorization\LogService;
 use hmcsw\service\config\ConfigService;
 use hmcsw\service\general\BalanceService;
-use hmcsw\service\authorization\LogService;
-use hmcsw\service\templates\LanguageService;
-use CoinbaseCommerce\Exceptions\ApiException;
 use hmcsw\service\module\ModulePaymentRepository;
+use hmcsw\service\templates\LanguageService;
+use hmcsw\utils\UnitUtil;
 
 class coinbase implements ModulePaymentRepository
 {
@@ -226,5 +227,15 @@ class coinbase implements ModulePaymentRepository
   public function formatePaymentName (string $type, array $input): string
   {
     // TODO: Implement formatePaymentName() method.
+  }
+
+  public function createSubscription(PaymentSubscriptionEntity $paymentSubscription, string $returnURL): array
+  {
+    // TODO: Implement createSubscription() method.
+  }
+
+  public function readySubscription(PaymentSubscriptionEntity $paymentSubscription): array
+  {
+    // TODO: Implement readySubscription() method.
   }
 }
