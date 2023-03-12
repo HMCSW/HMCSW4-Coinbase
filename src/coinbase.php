@@ -10,6 +10,7 @@ use Exception;
 use hmcsw\objects\user\User;
 use hmcsw\payment\Payment;
 use hmcsw\payment\PaymentEvents;
+use hmcsw\payment\PaymentMethod;
 use hmcsw\payment\PaymentRetourReason;
 use hmcsw\payment\subscription\PaymentSubscriptionEntity;
 use hmcsw\service\authorization\LogService;
@@ -199,12 +200,12 @@ class coinbase implements ModulePaymentRepository
     return ["success" => false, "response" => ["error_code" => 400, "error_message" => "not available for coinbase"]];
   }
 
-  public function addMethod (User $user, $method, $args): array
+  public function addMethod (PaymentMethod $paymentMethod, $args): array
   {
     return ["success" => false];
   }
 
-  public function removeMethod (User $user, $external_id): array
+  public function removeMethod (PaymentMethod $paymentMethod): array
   {
     return ["success" => false];
   }
