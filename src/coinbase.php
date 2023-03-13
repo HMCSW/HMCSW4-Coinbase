@@ -7,8 +7,10 @@ use CoinbaseCommerce\Exceptions\ApiException;
 use CoinbaseCommerce\Resources\Charge;
 use CoinbaseCommerce\Webhook;
 use Exception;
+use hmcsw\exception\NotFoundException;
 use hmcsw\objects\user\User;
 use hmcsw\payment\Payment;
+use hmcsw\payment\PaymentEntity;
 use hmcsw\payment\PaymentEvents;
 use hmcsw\payment\PaymentMethod;
 use hmcsw\payment\PaymentRetourReason;
@@ -78,7 +80,6 @@ class coinbase implements ModulePaymentRepository
       http_response_code(200);
 
       if ($event->type == "charge:confirmed") {
-        Payment::checkoutPayment($data['event']['data']['id'], true);
         return Payment::checkoutPayment($data['event']['data']['id']);
       } elseif ($event->type == "charge:failed") {
         return PaymentEvents::paymentCancelled($data['event']['data']['id']);
@@ -98,17 +99,17 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function checkoutPayment (User $user, $external_id, $payment_id): array
+  public function checkoutPayment (PaymentEntity $payment): array
   {
     if (is_array($this->getCoinbase())) return $this->getCoinbase();
     $coinbase = $this->getCoinbase();
 
-    if ($external_id == "00000000-0000-0000-0000-000000000000") {
+    if ($payment->getExternalId() == "00000000-0000-0000-0000-000000000000") {
       return ["success" => true, "response" => ["status" => "paid"]];
     }
 
     try {
-      $retrievedCharge = Charge::retrieve($external_id);
+      $retrievedCharge = Charge::retrieve($payment->getExternalId());
       return ["success" => true, "response" => ["status" => "paid"]];
     } catch (Exception $e) {
       return ["success" => false, "response" => ["error_code" => $e->getCode(), "error_message" => $e->getMessage()]];
@@ -157,16 +158,9 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function createOneTimePayment (User $user, $order_id, $payment_id, $method, string $returnURL): array
+  public function createOneTimePayment (PaymentEntity $payment, string $returnURL): array
   {
     if (is_array($this->getCoinbase())) return $this->getCoinbase();
-    $coinbase = $this->getCoinbase();
-
-    $order = Payment::getOrder($order_id);
-    if (!$order['success']) return $order;
-    $order = $order['response']['order'];
-
-    $endPrize = $order['amount']['full'];
 
     try {
       $currency = UnitUtil::getCurrency("code");
@@ -174,7 +168,7 @@ class coinbase implements ModulePaymentRepository
 
       $chargeData = ['name' => ConfigService::getConfig() ['name'],
         "description" => "Checkout",
-        'local_price' => ['amount' => BalanceService::creditsToEuro($endPrize, "."), 'currency' => $currency],
+        'local_price' => ['amount' => BalanceService::creditsToEuro($payment->getAmount(), "."), 'currency' => $currency],
         'pricing_type' => 'fixed_price',
         "redirect_url" => $returnURL,
         "cancel_url" => $returnURL];
@@ -184,7 +178,7 @@ class coinbase implements ModulePaymentRepository
       $links = $charge->hosted_url;
 
       return ["success" => true,
-        "response" => ["payment_id" => $payment_id, "external_id" => $external_id, "link" => $links]];
+        "response" => ["external_id" => $external_id, "link" => $links]];
     } catch (Exception $e) {
       return ["success" => false, "response" => ["error_code" => $e->getCode(), "error_message" => $e]];
     }
@@ -195,7 +189,7 @@ class coinbase implements ModulePaymentRepository
     return $this->config;
   }
 
-  public function retourPayment ($external_id, PaymentRetourReason $reason, $amount): array
+  public function retourPayment (PaymentEntity $payment, PaymentRetourReason $reason, $amount): array
   {
     return ["success" => false, "response" => ["error_code" => 400, "error_message" => "not available for coinbase"]];
   }
@@ -215,12 +209,12 @@ class coinbase implements ModulePaymentRepository
     return [];
   }
 
-  public function createPayment (User $user, string $order_id, int $payment_id, string $methodExternalID): array
+  public function createPayment (PaymentEntity $payment): array
   {
     return ["success" => false];
   }
 
-  public function methodReady (User $user, $external_id): array
+  public function methodReady (PaymentMethod $paymentMethod): array
   {
     // TODO: Implement methodReady() method.
   }
@@ -238,5 +232,20 @@ class coinbase implements ModulePaymentRepository
   public function readySubscription(PaymentSubscriptionEntity $paymentSubscription): array
   {
     // TODO: Implement readySubscription() method.
+  }
+
+  public function updateCustomer(User $user, string $external_id): array
+  {
+    // TODO: Implement updateCustomer() method.
+  }
+
+  public function createCustomer(User $user): array
+  {
+    // TODO: Implement createCustomer() method.
+  }
+
+  public function deleteCustomer(User $user, string $external_id): array
+  {
+    // TODO: Implement deleteCustomer() method.
   }
 }
