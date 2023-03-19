@@ -7,7 +7,6 @@ use CoinbaseCommerce\Exceptions\ApiException;
 use CoinbaseCommerce\Resources\Charge;
 use CoinbaseCommerce\Webhook;
 use Exception;
-use hmcsw\exception\NotFoundException;
 use hmcsw\objects\user\User;
 use hmcsw\payment\Payment;
 use hmcsw\payment\PaymentEntity;
@@ -99,7 +98,7 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function checkoutPayment (PaymentEntity $payment): array
+  public function checkoutPayment (PaymentEntity $payment): bool
   {
     if (is_array($this->getCoinbase())) return $this->getCoinbase();
     $coinbase = $this->getCoinbase();
@@ -189,17 +188,17 @@ class coinbase implements ModulePaymentRepository
     return $this->config;
   }
 
-  public function retourPayment (PaymentEntity $payment, PaymentRetourReason $reason, $amount): array
+  public function refundPayment (PaymentEntity $payment, PaymentRetourReason $reason, int $amount): array
   {
     return ["success" => false, "response" => ["error_code" => 400, "error_message" => "not available for coinbase"]];
   }
 
-  public function addMethod (PaymentMethod $paymentMethod, $args): array
+  public function addMethod (PaymentMethod $paymentMethod, array $args): array
   {
     return ["success" => false];
   }
 
-  public function removeMethod (PaymentMethod $paymentMethod): array
+  public function removeMethod (PaymentMethod $paymentMethod): bool
   {
     return ["success" => false];
   }
@@ -214,12 +213,12 @@ class coinbase implements ModulePaymentRepository
     return ["success" => false];
   }
 
-  public function methodReady (PaymentMethod $paymentMethod): array
+  public function methodReady (PaymentMethod $paymentMethod): bool
   {
     // TODO: Implement methodReady() method.
   }
 
-  public function formatePaymentName (string $type, array $input): string
+  public function formatPaymentName (string $type, array $input): string
   {
     // TODO: Implement formatePaymentName() method.
   }
@@ -244,7 +243,7 @@ class coinbase implements ModulePaymentRepository
     // TODO: Implement createCustomer() method.
   }
 
-  public function deleteCustomer(User $user, string $external_id): array
+  public function deleteCustomer(User $user, string $external_id): bool
   {
     // TODO: Implement deleteCustomer() method.
   }
