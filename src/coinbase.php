@@ -7,19 +7,19 @@ use CoinbaseCommerce\Exceptions\ApiException;
 use CoinbaseCommerce\Resources\Charge;
 use CoinbaseCommerce\Webhook;
 use Exception;
+use hmcsw\exception\ApiErrorException;
+use hmcsw\exception\PaymentException;
 use hmcsw\objects\user\User;
 use hmcsw\payment\Payment;
 use hmcsw\payment\PaymentEntity;
 use hmcsw\payment\PaymentEvents;
 use hmcsw\payment\PaymentMethod;
 use hmcsw\payment\PaymentRetourReason;
-use hmcsw\payment\subscription\PaymentSubscriptionEntity;
 use hmcsw\service\authorization\LogService;
 use hmcsw\service\config\ConfigService;
 use hmcsw\service\general\BalanceService;
 use hmcsw\service\module\ModulePaymentRepository;
 use hmcsw\service\templates\LanguageService;
-use hmcsw\utils\UnitUtil;
 
 class coinbase implements ModulePaymentRepository
 {
@@ -87,7 +87,7 @@ class coinbase implements ModulePaymentRepository
           "response" => "Hook success, but nothing to do: " . $event->type,
           "status_code" => 200];
       }
-    } catch (\Exception $e) {
+    } catch (Exception $e) {
       http_response_code(400);
       return ["success" => false,
         "response" => ["error_code" => 400,
@@ -100,30 +100,40 @@ class coinbase implements ModulePaymentRepository
 
   public function checkoutPayment (PaymentEntity $payment): bool
   {
-    if (is_array($this->getCoinbase())) return $this->getCoinbase();
-    $coinbase = $this->getCoinbase();
+    try {
+      $this->getCoinbase();
+    } catch (ApiErrorException $e) {
+      throw new PaymentException($e->getMessage(), $e->getCode());
+    }
 
     if ($payment->getExternalId() == "00000000-0000-0000-0000-000000000000") {
-      return ["success" => true, "response" => ["status" => "paid"]];
+      return true;
     }
 
     try {
       $retrievedCharge = Charge::retrieve($payment->getExternalId());
-      return ["success" => true, "response" => ["status" => "paid"]];
+      if ($retrievedCharge->status == "CONFIRMED") {
+        return true;
+      } else {
+        throw new PaymentException("Payment not confirmed", 400);
+      }
     } catch (Exception $e) {
-      return ["success" => false, "response" => ["error_code" => $e->getCode(), "error_message" => $e->getMessage()]];
+      throw new PaymentException($e->getMessage(), $e->getCode());
     }
 
   }
 
-  public function getCoinbase (): ApiClient|array
+  /**
+   * @throws ApiErrorException
+   */
+  public function getCoinbase (): ApiClient
   {
     try {
       $apiClientObj = ApiClient::init($this->client_secret);
       $apiClientObj->setTimeout(3);
       return $apiClientObj;
     } catch (ApiException $e) {
-      return ["success" => false, "response" => ["error_code" => $e->getCode(), "error_message" => $e->getMessage()]];
+      throw new ApiErrorException($e->getMessage(), $e->getCode());
     }
   }
 
@@ -159,13 +169,16 @@ class coinbase implements ModulePaymentRepository
 
   public function createOneTimePayment (PaymentEntity $payment, string $returnURL): array
   {
-    if (is_array($this->getCoinbase())) return $this->getCoinbase();
+    try {
+      $this->getCoinbase();
+    } catch (ApiErrorException $e) {
+      throw new PaymentException($e->getMessage(), $e->getCode());
+    }
 
     try {
-      $currency = UnitUtil::getCurrency("code");
       $currency = "EUR";
 
-      $chargeData = ['name' => ConfigService::getConfig() ['name'],
+      $chargeData = ['name' => ConfigService::getConfigValue("name"),
         "description" => "Checkout",
         'local_price' => ['amount' => BalanceService::creditsToEuro($payment->getAmount(), "."), 'currency' => $currency],
         'pricing_type' => 'fixed_price',
@@ -190,17 +203,17 @@ class coinbase implements ModulePaymentRepository
 
   public function refundPayment (PaymentEntity $payment, PaymentRetourReason $reason, int $amount): array
   {
-    return ["success" => false, "response" => ["error_code" => 400, "error_message" => "not available for coinbase"]];
+    throw new PaymentException("Refund not supported", 0);
   }
 
   public function addMethod (PaymentMethod $paymentMethod, array $args): array
   {
-    return ["success" => false];
+    throw new PaymentException("Add method not supported", 0);
   }
 
   public function removeMethod (PaymentMethod $paymentMethod): bool
   {
-    return ["success" => false];
+    throw new PaymentException("Remove method not supported", 0);
   }
 
   public function getProperties (): array
@@ -210,41 +223,31 @@ class coinbase implements ModulePaymentRepository
 
   public function createPayment (PaymentEntity $payment): array
   {
-    return ["success" => false];
+    throw new PaymentException("Create payment not supported", 0);
   }
 
   public function methodReady (PaymentMethod $paymentMethod): bool
   {
-    // TODO: Implement methodReady() method.
+    throw new PaymentException("Method ready not supported", 0);
   }
 
   public function formatPaymentName (string $type, array $input): string
   {
-    // TODO: Implement formatePaymentName() method.
-  }
-
-  public function createSubscription(PaymentSubscriptionEntity $paymentSubscription, string $returnURL): array
-  {
-    // TODO: Implement createSubscription() method.
-  }
-
-  public function readySubscription(PaymentSubscriptionEntity $paymentSubscription): array
-  {
-    // TODO: Implement readySubscription() method.
+    return "";
   }
 
   public function updateCustomer(User $user, string $external_id): array
   {
-    // TODO: Implement updateCustomer() method.
+    throw new PaymentException("Update customer not supported", 0);
   }
 
   public function createCustomer(User $user): array
   {
-    // TODO: Implement createCustomer() method.
+    throw new PaymentException("Create customer not supported", 0);
   }
 
   public function deleteCustomer(User $user, string $external_id): bool
   {
-    // TODO: Implement deleteCustomer() method.
+    throw new PaymentException("Delete customer not supported", 0);
   }
 }
