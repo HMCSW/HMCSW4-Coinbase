@@ -79,6 +79,7 @@ class coinbase implements ModulePaymentRepository
       http_response_code(200);
 
       if ($event->type == "charge:confirmed") {
+        PaymentEvents::paymentApproved($data['event']['data']['id']);
         return Payment::checkoutPayment($data['event']['data']['id']);
       } elseif ($event->type == "charge:failed") {
         return PaymentEvents::paymentCancelled($data['event']['data']['id']);
@@ -189,10 +190,9 @@ class coinbase implements ModulePaymentRepository
       $external_id = $charge->id;
       $links = $charge->hosted_url;
 
-      return ["success" => true,
-        "response" => ["external_id" => $external_id, "link" => $links]];
+      return ["external_id" => $external_id, "link" => $links];
     } catch (Exception $e) {
-      return ["success" => false, "response" => ["error_code" => $e->getCode(), "error_message" => $e]];
+      throw new PaymentException($e->getMessage(), $e->getCode());
     }
   }
 
