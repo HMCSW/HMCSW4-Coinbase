@@ -80,7 +80,7 @@ class coinbase implements ModulePaymentRepository
 
       if ($event->type == "charge:confirmed") {
         PaymentEvents::paymentApproved($data['event']['data']['id']);
-        return Payment::checkoutPayment($data['event']['data']['id']);
+        return Payment::checkoutPayment($data['event']['data']['id'], true);
       } elseif ($event->type == "charge:failed") {
         return PaymentEvents::paymentCancelled($data['event']['data']['id']);
       } else {
