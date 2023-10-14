@@ -15,6 +15,7 @@ use hmcsw\payment\PaymentEntity;
 use hmcsw\payment\PaymentEvents;
 use hmcsw\payment\PaymentMethod;
 use hmcsw\payment\PaymentRetourReason;
+use hmcsw\service\api\ApiService;
 use hmcsw\service\authorization\LogService;
 use hmcsw\service\config\ConfigService;
 use hmcsw\service\general\BalanceService;
@@ -79,15 +80,20 @@ class coinbase implements ModulePaymentRepository
       http_response_code(200);
 
       if ($event->type == "charge:confirmed") {
-        PaymentEvents::paymentApproved($data['event']['data']['id']);
-        return Payment::checkoutPayment($data['event']['data']['id'], true);
+        $id = $data['event']['data']['id'];
+        $payment = PaymentEntity::getPaymentByExternal($id);
+        $payment->approvePayment();
+        return $payment->checkoutPayment(true);
       } elseif ($event->type == "charge:failed") {
-        return PaymentEvents::paymentCancelled($data['event']['data']['id']);
+        $id = $data['event']['data']['id'];
+        $payment = PaymentEntity::getPaymentByExternal($id);
+        $payment->cancelPayment();
       } else {
         return ["success" => true,
           "response" => "Hook success, but nothing to do: " . $event->type,
           "status_code" => 200];
       }
+      return ApiService::getSuccessMessage();
     } catch (Exception $e) {
       http_response_code(400);
       return ["success" => false,
