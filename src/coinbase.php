@@ -16,6 +16,7 @@ use hmcsw\payment\PaymentEvents;
 use hmcsw\payment\PaymentMethod;
 use hmcsw\payment\PaymentRetourReason;
 use hmcsw\service\api\ApiService;
+use hmcsw\service\authorization\log\LogType;
 use hmcsw\service\authorization\LogService;
 use hmcsw\service\config\ConfigService;
 use hmcsw\service\general\BalanceService;
@@ -74,7 +75,7 @@ class coinbase implements ModulePaymentRepository
     $payload = trim(file_get_contents('php://input'));
 
     $data = json_decode(file_get_contents('php://input'), true);
-    LogService::createLog($data, "coinbase_hook_test_start");
+    LogService::writeLog($data, "coinbase_hook_test_start", LogType::DEBUG);
     try {
       $event = Webhook::buildEvent($payload, $signatureHeader, $this->hook_secret);
       http_response_code(200);
