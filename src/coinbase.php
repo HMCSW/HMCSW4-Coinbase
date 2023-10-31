@@ -8,13 +8,18 @@ use CoinbaseCommerce\Resources\Charge;
 use CoinbaseCommerce\Webhook;
 use Exception;
 use hmcsw\exception\ApiErrorException;
+use hmcsw\exception\NotFoundException;
 use hmcsw\exception\PaymentException;
 use hmcsw\objects\user\User;
+use hmcsw\payment\ModulePaymentMethod;
 use hmcsw\payment\Payment;
 use hmcsw\payment\PaymentEntity;
 use hmcsw\payment\PaymentEvents;
 use hmcsw\payment\PaymentMethod;
+use hmcsw\payment\PaymentMethodMode;
+use hmcsw\payment\PaymentRetour;
 use hmcsw\payment\PaymentRetourReason;
+use hmcsw\payment\PaymentType;
 use hmcsw\service\api\ApiService;
 use hmcsw\service\authorization\log\LogType;
 use hmcsw\service\authorization\LogService;
@@ -30,12 +35,12 @@ class coinbase implements ModulePaymentRepository
   private string $client_secret;
   private string $hook_secret;
 
-  public function __construct ()
+  public function __construct()
   {
     $this->config = json_decode(file_get_contents(__DIR__ . '/../config/config.json'), true);
   }
 
-  public function startModule (): bool
+  public function startModule(): bool
   {
     if ($this->config['enabled']) {
       return true;
@@ -44,7 +49,7 @@ class coinbase implements ModulePaymentRepository
     }
   }
 
-  public function getMessages (string $lang): array|bool
+  public function getMessages(string $lang): array|bool
   {
     if (!file_exists(__DIR__ . '/../messages/' . $lang . '.json')) {
       return false;
@@ -53,12 +58,12 @@ class coinbase implements ModulePaymentRepository
     return json_decode(file_get_contents(__DIR__ . '/../messages/' . $lang . '.json'), true);
   }
 
-  public function getModuleInfo (): array
+  public function getModuleInfo(): array
   {
     return json_decode(file_get_contents(__DIR__ . '/../module.json'), true);
   }
 
-  public function initial (): void
+  public function initial(): void
   {
     $this->client_secret = $this->config['secret']['client'];
     $this->hook_secret = $this->config['secret']['hook'];
@@ -67,7 +72,7 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function hook (): array
+  public function hook(): array
   {
     $headerName = 'X-Cc-Webhook-Signature';
     $headers = getallheaders();
@@ -106,7 +111,7 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function checkoutPayment (PaymentEntity $payment): bool
+  public function checkoutPayment(PaymentEntity $payment): bool
   {
     try {
       $this->getCoinbase();
@@ -134,18 +139,18 @@ class coinbase implements ModulePaymentRepository
   /**
    * @throws ApiErrorException
    */
-  public function getCoinbase (): ApiClient
+  public function getCoinbase(): ApiClient
   {
     try {
       $apiClientObj = ApiClient::init($this->client_secret);
       $apiClientObj->setTimeout(3);
       return $apiClientObj;
     } catch (ApiException $e) {
-      throw new ApiErrorException($e->getMessage(), $e->getCode());
+      throw new ApiErrorException($e->getMessage(), $e->getCode(), [], $e);
     }
   }
 
-  public function getAvailablePaymentMethods ($amount, $type = "oneTime"): array
+  public function getAvailablePaymentMethods($amount, $type = "oneTime"): array
   {
     $methods = [];
 
@@ -153,19 +158,9 @@ class coinbase implements ModulePaymentRepository
       foreach ($this->config['methods']['oneTime'] as $method => $setting) {
         if ($setting['enabled']) {
           if ($setting['minimum'] <= $amount and $setting['maximum'] >= $amount) {
-            $methods[$method] = ["method" => $method,
-              "fee" => $setting['fee'],
-              "name" => LanguageService::getMessage("site.cart.method." . $method)];
-          }
-        }
-      }
-    } elseif ($type == "moreTime") {
-      foreach ($this->config['methods']['moreTime'] as $method => $setting) {
-        if ($setting['enabled']) {
-          if ($setting['minimum'] <= $amount and $setting['maximum'] >= $amount) {
-            $methods[$method] = ["method" => $method,
-              "fee" => $setting['fee'],
-              "name" => LanguageService::getMessage("site.cart.method." . $method)];
+            try {
+              $methods[$method] = $this->getPaymentMethod(PaymentType::oneTime, $method);
+            } catch (NotFoundException) {}
           }
         }
       }
@@ -175,7 +170,7 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function createOneTimePayment (PaymentEntity $payment, string $returnURL): array
+  public function createOneTimePayment(PaymentEntity $payment, string $returnURL): array
   {
     try {
       $this->getCoinbase();
@@ -203,44 +198,19 @@ class coinbase implements ModulePaymentRepository
     }
   }
 
-  public function getConfig (): array
+  public function getConfig(): array
   {
     return $this->config;
   }
 
-  public function refundPayment (PaymentEntity $payment, PaymentRetourReason $reason, int $amount): array
+  public function refundPayment(PaymentRetour $retour): array
   {
     throw new PaymentException("Refund not supported", 0);
   }
 
-  public function addMethod (PaymentMethod $paymentMethod, array $args): array
-  {
-    throw new PaymentException("Add method not supported", 0);
-  }
-
-  public function removeMethod (PaymentMethod $paymentMethod): bool
-  {
-    throw new PaymentException("Remove method not supported", 0);
-  }
-
-  public function getProperties (): array
+  public function getProperties(): array
   {
     return [];
-  }
-
-  public function createPayment (PaymentEntity $payment): array
-  {
-    throw new PaymentException("Create payment not supported", 0);
-  }
-
-  public function methodReady (PaymentMethod $paymentMethod): bool
-  {
-    throw new PaymentException("Method ready not supported", 0);
-  }
-
-  public function formatPaymentName (string $type, array $input): string
-  {
-    return "";
   }
 
   public function updateCustomer(User $user, string $external_id): array
@@ -256,5 +226,23 @@ class coinbase implements ModulePaymentRepository
   public function deleteCustomer(User $user, string $external_id): bool
   {
     throw new PaymentException("Delete customer not supported", 0);
+  }
+
+  public function getPaymentMethod(PaymentType $type, string $identifier): ModulePaymentMethod
+  {
+    if ($type == PaymentType::oneTime) {
+      foreach ($this->config['methods']['oneTime'] as $method => $setting) {
+        if ($method == $identifier) {
+          return new ModulePaymentMethod(PaymentMethodMode::method,
+            PaymentType::oneTime,
+            $setting['minimum'],
+            $setting['maximum'],
+            $setting['fee'],
+            LanguageService::getMessage('site.cart.method.' . $method), "coinbase", $method);
+        }
+      }
+    }
+
+    throw new NotFoundException("method not found");
   }
 }
