@@ -150,11 +150,10 @@ class coinbase implements ModulePaymentRepository
     }
   }
 
-  public function getAvailablePaymentMethods($amount, $type = "oneTime"): array
+  public function getAvailablePaymentMethods(int $amount, PaymentType $type = PaymentType::oneTime): array
   {
     $methods = [];
-
-    if ($type == "oneTime") {
+    if ($type == PaymentType::oneTime) {
       foreach ($this->config['methods']['oneTime'] as $method => $setting) {
         if ($setting['enabled']) {
           if ($setting['minimum'] <= $amount and $setting['maximum'] >= $amount) {
