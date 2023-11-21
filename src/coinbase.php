@@ -169,7 +169,7 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function createOneTimePayment(PaymentEntity $payment, string $returnURL): array
+  public function createOneTimePayment(PaymentEntity $payment, string $returnURL, string $cancelURL): array
   {
     try {
       $this->getCoinbase();
@@ -185,7 +185,7 @@ class coinbase implements ModulePaymentRepository
         'local_price' => ['amount' => BalanceService::creditsToEuro($payment->getAmount(), "."), 'currency' => $currency],
         'pricing_type' => 'fixed_price',
         "redirect_url" => $returnURL,
-        "cancel_url" => $returnURL];
+        "cancel_url" => $cancelURL];
       $charge = Charge::create($chargeData);
 
       $external_id = $charge->id;
