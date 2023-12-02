@@ -19,6 +19,7 @@ use hmcsw\payment\PaymentMethod;
 use hmcsw\payment\PaymentMethodMode;
 use hmcsw\payment\PaymentRetour;
 use hmcsw\payment\PaymentRetourReason;
+use hmcsw\payment\PaymentState;
 use hmcsw\payment\PaymentType;
 use hmcsw\service\api\ApiService;
 use hmcsw\service\authorization\log\LogType;
@@ -90,6 +91,12 @@ class coinbase implements ModulePaymentRepository
         $payment = PaymentEntity::getPaymentByExternal($id);
         $payment->approvePayment();
         return $payment->checkoutPayment(true);
+      } elseif($event->type == "charge:resolved"){
+        $id = $data['event']['data']['id'];
+        $payment = PaymentEntity::getPaymentByExternal($id);
+        $payment->approvePayment();
+        $payment->overPaid($data->payments[0]->value->amount*100);
+        return $payment->checkoutPayment(true);
       } elseif ($event->type == "charge:failed") {
         $id = $data['event']['data']['id'];
         $payment = PaymentEntity::getPaymentByExternal($id);
@@ -126,6 +133,8 @@ class coinbase implements ModulePaymentRepository
     try {
       $retrievedCharge = Charge::retrieve($payment->getExternalId());
       if ($retrievedCharge->status == "CONFIRMED") {
+        return true;
+      } elseif ($retrievedCharge->status == "RESOLVED") {
         return true;
       } else {
         throw new PaymentException("Payment not confirmed", 400);
