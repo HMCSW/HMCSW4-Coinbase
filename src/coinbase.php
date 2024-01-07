@@ -10,16 +10,12 @@ use Exception;
 use hmcsw\exception\ApiErrorException;
 use hmcsw\exception\NotFoundException;
 use hmcsw\exception\PaymentException;
+use hmcsw\exception\ValidationException;
 use hmcsw\objects\user\User;
 use hmcsw\payment\ModulePaymentMethod;
-use hmcsw\payment\Payment;
 use hmcsw\payment\PaymentEntity;
-use hmcsw\payment\PaymentEvents;
-use hmcsw\payment\PaymentMethod;
 use hmcsw\payment\PaymentMethodMode;
 use hmcsw\payment\PaymentRetour;
-use hmcsw\payment\PaymentRetourReason;
-use hmcsw\payment\PaymentState;
 use hmcsw\payment\PaymentType;
 use hmcsw\service\api\ApiService;
 use hmcsw\service\authorization\log\LogType;
@@ -73,33 +69,58 @@ class coinbase implements ModulePaymentRepository
 
   }
 
+  /**
+   * @throws ValidationException
+   * @throws PaymentException
+   * @throws NotFoundException
+   */
+  private function overpayed(PaymentEntity $payment, array $data): array
+  {
+    $checkout = $payment->checkoutPayment(true);
+
+    $amount = 0;
+
+    foreach ($data['event']['data']['payments'] as $payment1) {
+      $amount += ($payment1['value']['local']['amount'] ?? 0) * 100;
+    }
+
+    $payment->overPaid($amount, true);
+    return $checkout;
+  }
+
   public function hook(): array
   {
     $headerName = 'X-Cc-Webhook-Signature';
     $headers = getallheaders();
-    $signatureHeader = $headers[$headerName] ?? null;
+    $signatureHeader = $headers[$headerName] ?? "";
     $payload = trim(file_get_contents('php://input'));
 
     $data = json_decode(file_get_contents('php://input'), true);
+    if ($data === null) {
+      throw new ValidationException("Invalid payload");
+    }
+
     LogService::writeLog($data, "coinbase_hook_test_start", LogType::DEBUG);
     try {
       $event = Webhook::buildEvent($payload, $signatureHeader, $this->hook_secret);
       http_response_code(200);
 
+      $id = $data['event']['data']['id'];
+      try {
+        $payment = PaymentEntity::getPaymentByExternal($id);
+      } catch (NotFoundException $e) {
+        return ["success" => true,
+          "response" => "Hook success, but nothing to do: " . $e->getMessage(),
+          "status_code" => 200];
+      }
+
       if ($event->type == "charge:confirmed") {
-        $id = $data['event']['data']['id'];
-        $payment = PaymentEntity::getPaymentByExternal($id);
         $payment->approvePayment();
         return $payment->checkoutPayment(true);
-      } elseif($event->type == "charge:resolved"){
-        $id = $data['event']['data']['id'];
-        $payment = PaymentEntity::getPaymentByExternal($id);
+      } elseif ($event->type == "charge:resolved") {
         $payment->approvePayment();
-        $payment->overPaid($data->payments[0]->value->amount*100);
-        return $payment->checkoutPayment(true);
+        return $this->overpayed($payment, $data);
       } elseif ($event->type == "charge:failed") {
-        $id = $data['event']['data']['id'];
-        $payment = PaymentEntity::getPaymentByExternal($id);
         $payment->cancelPayment();
       } else {
         return ["success" => true,
@@ -108,6 +129,11 @@ class coinbase implements ModulePaymentRepository
       }
       return ApiService::getSuccessMessage();
     } catch (Exception $e) {
+      if ($e->getMessage() == "payment already approved") {
+        return ["success" => true,
+          "response" => "Hook success, but nothing to do: " . $e->getMessage(),
+          "status_code" => 200];
+      }
       http_response_code(400);
       return ["success" => false,
         "response" => ["error_code" => 400,
@@ -168,7 +194,8 @@ class coinbase implements ModulePaymentRepository
           if ($setting['minimum'] <= $amount and $setting['maximum'] >= $amount) {
             try {
               $methods[$method] = $this->getPaymentMethod(PaymentType::oneTime, $method);
-            } catch (NotFoundException) {}
+            } catch (NotFoundException) {
+            }
           }
         }
       }
