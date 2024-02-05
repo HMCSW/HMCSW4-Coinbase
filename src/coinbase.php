@@ -84,7 +84,15 @@ class coinbase implements ModulePaymentRepository
       $amount += ($payment1['value']['local']['amount'] ?? 0) * 100;
     }
 
-    $payment->overPaid($amount, true);
+    if($amount == 0){
+      throw new ValidationException("Invalid amount");
+    } elseif($amount < $payment->getAmount()){
+      $payment->underPaid($amount, true);
+    } elseif($amount == $payment->getAmount()){
+      return $checkout;
+    } elseif($amount > $payment->getAmount()){
+      $payment->overPaid($amount, true);
+    }
     return $checkout;
   }
 
