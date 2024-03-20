@@ -122,6 +122,8 @@ class coinbase implements ModulePaymentRepository
         return $this->overpayed($payment, $data);
       } elseif ($event->type == "charge:failed") {
         $payment->cancelPayment();
+      } elseif($event->type == "charge:pending") {
+        $payment->paymentPendingButApproved();
       } else {
         return ["success" => true,
           "response" => "Hook success, but nothing to do: " . $event->type,
