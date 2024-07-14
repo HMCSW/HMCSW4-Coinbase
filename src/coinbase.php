@@ -11,19 +11,19 @@ use hmcsw\exception\ApiErrorException;
 use hmcsw\exception\NotFoundException;
 use hmcsw\exception\PaymentException;
 use hmcsw\exception\ValidationException;
-use hmcsw\objects\user\User;
+use hmcsw\infrastructure\format\FormatUtil;
+use hmcsw\infrastructure\logs\LogService;
+use hmcsw\infrastructure\logs\LogType;
+use hmcsw\infrastructure\module\ModulePaymentRepository;
+use hmcsw\infrastructure\module\payment\ModuleOneTimeCreateResponse;
+use hmcsw\payment\domain\Payment;
+use hmcsw\payment\domain\PaymentMethodMode;
+use hmcsw\payment\domain\PaymentRefund;
+use hmcsw\payment\domain\PaymentType;
 use hmcsw\payment\ModulePaymentMethod;
-use hmcsw\payment\PaymentEntity;
-use hmcsw\payment\PaymentMethodMode;
-use hmcsw\payment\PaymentRetour;
-use hmcsw\payment\PaymentType;
-use hmcsw\service\api\ApiService;
-use hmcsw\service\authorization\log\LogType;
-use hmcsw\service\authorization\LogService;
+use hmcsw\payment\service\PaymentService;
 use hmcsw\service\config\ConfigService;
-use hmcsw\service\general\BalanceService;
-use hmcsw\service\module\ModulePaymentRepository;
-use hmcsw\service\templates\LanguageService;
+use hmcsw\user\domain\User;
 
 class coinbase implements ModulePaymentRepository
 {
@@ -46,7 +46,7 @@ class coinbase implements ModulePaymentRepository
     }
   }
 
-  public function getMessages(string $lang): array|bool
+  public function getMessages(string $lang): array|false
   {
     if (!file_exists(__DIR__ . '/../messages/' . $lang . '.json')) {
       return false;
@@ -72,11 +72,10 @@ class coinbase implements ModulePaymentRepository
   /**
    * @throws ValidationException
    * @throws PaymentException
-   * @throws NotFoundException
    */
-  private function overpayed(PaymentEntity $payment, array $data): array
+  private function overpayed(Payment $payment, array $data): array
   {
-    $checkout = $payment->checkoutPayment(true);
+    $checkout = PaymentService::checkoutPayment($payment, true);
 
     $amount = 0;
 
@@ -87,11 +86,11 @@ class coinbase implements ModulePaymentRepository
     if($amount == 0){
       throw new ValidationException("Invalid amount");
     } elseif($amount < $payment->getAmount()){
-      $payment->underPaid($amount, true);
+      PaymentService::underPaid($payment, $amount, true);
     } elseif($amount == $payment->getAmount()){
       return $checkout;
     } elseif($amount > $payment->getAmount()){
-      $payment->overPaid($amount, true);
+      PaymentService::overPaid($payment, $amount, true);
     }
     return $checkout;
   }
@@ -115,7 +114,7 @@ class coinbase implements ModulePaymentRepository
 
       $id = $data['event']['data']['id'];
       try {
-        $payment = PaymentEntity::getPaymentByExternal($id);
+        $payment = PaymentService::getPaymentByExternalId($id);
       } catch (NotFoundException $e) {
         return ["success" => true,
           "response" => "Hook success, but nothing to do: " . $e->getMessage(),
@@ -123,21 +122,21 @@ class coinbase implements ModulePaymentRepository
       }
 
       if ($event->type == "charge:confirmed") {
-        $payment->approvePayment();
-        return $payment->checkoutPayment(true);
+        PaymentService::approvePayment($payment);
+        return PaymentService::checkoutPayment($payment, true);
       } elseif ($event->type == "charge:resolved") {
-        $payment->approvePayment();
+        PaymentService::approvePayment($payment);
         return $this->overpayed($payment, $data);
       } elseif ($event->type == "charge:failed") {
-        $payment->cancelPayment();
+        PaymentService::cancelPayment($payment);
       } elseif($event->type == "charge:pending") {
-        $payment->paymentPendingButApproved();
+        PaymentService::paymentPendingButApproved($payment);
       } else {
         return ["success" => true,
           "response" => "Hook success, but nothing to do: " . $event->type,
           "status_code" => 200];
       }
-      return ApiService::getSuccessMessage();
+      return [];
     } catch (Exception $e) {
       if ($e->getMessage() == "payment already approved") {
         return ["success" => true,
@@ -154,29 +153,29 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function checkoutPayment(PaymentEntity $payment): bool
+  public function checkoutPayment(Payment $payment): bool
   {
     try {
       $this->getCoinbase();
     } catch (ApiErrorException $e) {
-      throw new PaymentException($e->getMessage(), $e->getCode());
+      throw new PaymentException($e->getMessage(), [], $e);
     }
 
-    if ($payment->getExternalId() == "00000000-0000-0000-0000-000000000000") {
+    if ($payment->getExternalIdentifier() == "00000000-0000-0000-0000-000000000000") {
       return true;
     }
 
     try {
-      $retrievedCharge = Charge::retrieve($payment->getExternalId());
+      $retrievedCharge = Charge::retrieve($payment->getExternalIdentifier());
       if ($retrievedCharge->status == "CONFIRMED") {
         return true;
       } elseif ($retrievedCharge->status == "RESOLVED") {
         return true;
       } else {
-        throw new PaymentException("Payment not confirmed", 400);
+        throw new PaymentException("Payment not confirmed");
       }
     } catch (Exception $e) {
-      throw new PaymentException($e->getMessage(), $e->getCode());
+      throw new PaymentException($e->getMessage(), [], $e);
     }
 
   }
@@ -191,7 +190,7 @@ class coinbase implements ModulePaymentRepository
       $apiClientObj->setTimeout(3);
       return $apiClientObj;
     } catch (ApiException $e) {
-      throw new ApiErrorException($e->getMessage(), $e->getCode(), [], $e);
+      throw new ApiErrorException($e->getMessage(), [], $e);
     }
   }
 
@@ -215,31 +214,31 @@ class coinbase implements ModulePaymentRepository
 
   }
 
-  public function createOneTimePayment(PaymentEntity $payment, string $returnURL, string $cancelURL): array
+  public function createOneTimePayment(Payment $payment, string $returnURL, string $cancelURL): ModuleOneTimeCreateResponse
   {
     try {
       $this->getCoinbase();
     } catch (ApiErrorException $e) {
-      throw new PaymentException($e->getMessage(), $e->getCode());
+      throw new PaymentException($e->getMessage(), [], $e);
     }
 
     try {
-      $currency = "EUR";
+      $amount = FormatUtil::formatCurrencyWithConfig($payment->getAmount(), ".");
 
       $chargeData = ['name' => ConfigService::getConfigValue("name"),
         "description" => "Checkout",
-        'local_price' => ['amount' => BalanceService::creditsToEuro($payment->getAmount(), "."), 'currency' => $currency],
+        'local_price' => ['amount' => $amount->getFormat(), 'currency' => "EUR"],
         'pricing_type' => 'fixed_price',
         "redirect_url" => $returnURL,
         "cancel_url" => $cancelURL];
       $charge = Charge::create($chargeData);
 
-      $external_id = $charge->id;
-      $links = $charge->hosted_url;
+      $external_id = $charge['id'];
+      $link = $charge['hosted_url'];
 
-      return ["external_id" => $external_id, "link" => $links];
+      return new ModuleOneTimeCreateResponse($external_id, $link);
     } catch (Exception $e) {
-      throw new PaymentException($e->getMessage(), $e->getCode());
+      throw new PaymentException($e->getMessage(), [], $e);
     }
   }
 
@@ -248,9 +247,9 @@ class coinbase implements ModulePaymentRepository
     return $this->config;
   }
 
-  public function refundPayment(PaymentRetour $retour): array
+  public function refundPayment(PaymentRefund $refund): array
   {
-    throw new PaymentException("Refund not supported", 0);
+    throw new PaymentException("Refund not supported");
   }
 
   public function getProperties(): array
@@ -260,17 +259,17 @@ class coinbase implements ModulePaymentRepository
 
   public function updateCustomer(User $user, string $external_id): array
   {
-    throw new PaymentException("Update customer not supported", 0);
+    throw new PaymentException("Update customer not supported");
   }
 
   public function createCustomer(User $user): array
   {
-    throw new PaymentException("Create customer not supported", 0);
+    throw new PaymentException("Create customer not supported");
   }
 
   public function deleteCustomer(User $user, string $external_id): bool
   {
-    throw new PaymentException("Delete customer not supported", 0);
+    throw new PaymentException("Delete customer not supported");
   }
 
   public function getPaymentMethod(PaymentType $type, string $identifier): ModulePaymentMethod
@@ -283,11 +282,24 @@ class coinbase implements ModulePaymentRepository
             $setting['minimum'],
             $setting['maximum'],
             $setting['fee'],
-            LanguageService::getMessage('site.cart.method.' . $method), "coinbase", $method);
+            isset($setting['displayName']) ? FormatUtil::getMessage($setting['displayName']) : FormatUtil::getMessage('module.coinbase.method.'.$method),
+            $this->getIdentifier(),
+            $method,
+          );
         }
       }
     }
 
     throw new NotFoundException("method not found");
+  }
+
+  public function getName(): string
+  {
+    return $this->getModuleInfo()['name'];
+  }
+
+  public function getIdentifier(): string
+  {
+    return $this->getModuleInfo()['identifier'];
   }
 }
