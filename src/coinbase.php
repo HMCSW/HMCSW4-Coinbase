@@ -66,7 +66,6 @@ class coinbase implements ModulePaymentRepository
     $this->hook_secret = $this->config['secret']['hook'];
 
     $this->webhookUrl = ConfigService::getApiUrl() . '/hooks/payment/mollie?key=' . $this->hook_secret;
-
   }
 
   /**
